@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { Raycaster } from 'three'
-import { forward as nnForward, createNetwork } from '../nn-engine/NNEngine'
+import { forward as nnForward, createNetwork, disposeNetwork, trainStep } from '../nn-engine/NNEngine'
 
 // Manages nodes and connections in a Three.js scene.
 // Responsibilities:
@@ -28,11 +28,13 @@ export default class NeuralScene {
     this.lastDeleteAt = 0
 
     this.signalQueue = [] // animations for forward pass
+    this.animationTimers = []
 
     // GPU-friendly materials
-    this.nodeMaterial = new THREE.MeshStandardMaterial({ color: 0x60a5fa, metalness: 0.2, roughness: 0.55 })
-    this.nodeSelectedMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, emissive: 0x3f1900 })
-    this.nodeHighlightMat = new THREE.MeshStandardMaterial({ color: 0x34d399, emissive: 0x0f2e1f })
+    this.nodeMaterial = new THREE.MeshStandardMaterial({ color: 0x2563eb, metalness: 0.12, roughness: 0.42 })
+    this.nodeSelectedMat = new THREE.MeshStandardMaterial({ color: 0xd97706, emissive: 0x331a00 })
+    this.nodeHighlightMat = new THREE.MeshStandardMaterial({ color: 0x14b8a6, emissive: 0x093f3a })
+    this.nodePulseMat = new THREE.MeshStandardMaterial({ color: 0xfb7185, emissive: 0x4a1020 })
 
     // simple NN for simulation
     this.network = createNetwork([3, 4, 2], 'relu', 0.0)
@@ -50,6 +52,34 @@ export default class NeuralScene {
 
   _hasConnection(aId, bId) {
     return this.connections.some((c) => c.aId === aId && c.bId === bId)
+  }
+
+  _ensureNetwork(options = {}) {
+    const sizes = this.getLayerSizes()
+    if (sizes.length < 2) {
+      throw new Error('Create at least two layers before training')
+    }
+
+    const activation = options.activation || this.network.activation || 'relu'
+    const dropout = typeof options.dropout === 'number' ? options.dropout : (this.network.dropout || 0)
+    const needsRebuild = !this.network
+      || !Array.isArray(this.network.sizes)
+      || this.network.sizes.length !== sizes.length
+      || this.network.sizes.some((size, index) => size !== sizes[index])
+      || this.network.activation !== activation
+      || this.network.dropout !== dropout
+
+    if (needsRebuild) {
+      if (this.network) {
+        try { disposeNetwork(this.network) } catch (err) {}
+      }
+      this.network = createNetwork(sizes, activation, dropout)
+    } else {
+      this.network.activation = activation
+      this.network.dropout = dropout
+    }
+
+    return this.network
   }
 
   _refreshNodeVisuals() {
@@ -129,7 +159,7 @@ export default class NeuralScene {
     const mat = new THREE.LineBasicMaterial({ color: 0xcbd5e1, transparent: true, opacity: 0.48 })
     const line = new THREE.Line(lineGeom, mat)
     this.scene.add(line)
-    this.connections.push({ aId, bId, line, key: this._edgeKey(aId, bId) })
+    this.connections.push({ aId, bId, line, key: this._edgeKey(aId, bId), baseOpacity: 0.48, baseColor: 0xcbd5e1 })
     return true
   }
 
@@ -170,6 +200,8 @@ export default class NeuralScene {
     this.nodes.clear()
     this.connections = []
     this.layers = []
+    this.animationTimers.forEach((timer) => clearTimeout(timer))
+    this.animationTimers = []
   }
 
   getLayerSizes() {
@@ -295,10 +327,7 @@ export default class NeuralScene {
   // Simulate a forward pass visualization:
   async runForward(inputArray, options = {}) {
     try {
-      const sizes = this.getLayerSizes()
-      if (sizes.length >= 2) {
-        this.network = createNetwork(sizes, options.activation || 'relu', options.dropout || 0)
-      }
+      this._ensureNetwork(options)
       const expectedInputSize = this.network.sizes[0]
       const normalizedInput = Array.isArray(inputArray) && inputArray.length === expectedInputSize
         ? inputArray
@@ -312,34 +341,91 @@ export default class NeuralScene {
     }
   }
 
+  async trainBackprop(inputArray, targetArray, options = {}) {
+    try {
+      const network = this._ensureNetwork(options)
+      const expectedInputSize = network.sizes[0]
+      const expectedTargetSize = network.sizes[network.sizes.length - 1]
+      const normalizedInput = Array.isArray(inputArray) && inputArray.length === expectedInputSize
+        ? inputArray
+        : new Array(expectedInputSize).fill(0).map(() => Math.random() * 2 - 1)
+      const normalizedTarget = Array.isArray(targetArray) && targetArray.length === expectedTargetSize
+        ? targetArray
+        : new Array(expectedTargetSize).fill(0)
+
+      const result = trainStep(network, normalizedInput, normalizedTarget, options.learningRate || 0.03)
+      this._animateActivations(result.activations)
+      return {
+        input: normalizedInput,
+        target: normalizedTarget,
+        loss: result.loss,
+        activations: result.activations
+      }
+    } catch (err) {
+      console.error('Training error', err)
+      throw err
+    }
+  }
+
   _animateActivations(activations) {
-    // For simplicity, we change node colors by activation magnitude
-    // Map activations arrays to nodes in creation order for demo
+    this.animationTimers.forEach((timer) => clearTimeout(timer))
+    this.animationTimers = []
+
     let layerIndex = 0
     activations.forEach((layerAct, layerIdx) => {
       const layer = this.layers[layerIndex]
+      const prevLayer = this.layers[layerIndex - 1]
       if (!layer) {
         layerIndex += 1
         return
       }
+
+      if (prevLayer) {
+        const flowConnections = this.connections.filter((connection) => {
+          const source = this.nodes.get(connection.aId)
+          const target = this.nodes.get(connection.bId)
+          return source && target && prevLayer.nodeIds.includes(connection.aId) && layer.nodeIds.includes(connection.bId)
+        })
+
+        flowConnections.forEach((connection, connectionIndex) => {
+          const riseDelay = layerIdx * 260 + connectionIndex * 22
+          this.animationTimers.push(setTimeout(() => {
+            connection.line.material.color.set(0xf59e0b)
+            connection.line.material.opacity = 0.9
+          }, riseDelay))
+          this.animationTimers.push(setTimeout(() => {
+            connection.line.material.color.set(connection.baseColor)
+            connection.line.material.opacity = connection.baseOpacity
+          }, riseDelay + 320))
+        })
+      }
+
       layerAct.forEach((aVal, idx) => {
         const nodeId = layer.nodeIds[idx]
         const node = nodeId ? this.nodes.get(nodeId) : null
         if (node) {
-          const delay = layerIdx * 300
           const intensity = Math.min(1, Math.max(0, (aVal + 1) / 2))
-          setTimeout(() => {
-            node.mesh.scale.setScalar(1 + intensity * 0.45)
-            node.mesh.material = this.nodeHighlightMat
-            setTimeout(() => {
-              node.mesh.scale.setScalar(1)
-              this._refreshNodeVisuals()
-            }, 350)
-          }, delay)
+          const baseDelay = layerIdx * 260 + idx * 35
+          this.animationTimers.push(setTimeout(() => {
+            node.mesh.material = intensity > 0.66 ? this.nodePulseMat : this.nodeHighlightMat
+            node.mesh.scale.setScalar(1 + intensity * 0.52)
+          }, baseDelay))
+          this.animationTimers.push(setTimeout(() => {
+            node.mesh.scale.setScalar(1)
+            this._refreshNodeVisuals()
+          }, baseDelay + 360))
         }
       })
       layerIndex += 1
     })
+  }
+
+  applyPreset(preset) {
+    if (!preset || !Array.isArray(preset.layers) || preset.layers.length < 2) return
+    this.clear()
+    preset.layers.forEach((size) => this.createLayerByCount(size))
+    this.connectFeedForward()
+    this._refreshNodeVisuals()
   }
 
   _updateSignals(dt) {
