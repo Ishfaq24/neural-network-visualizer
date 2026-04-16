@@ -50,10 +50,14 @@ export function forward(network, inputArr) {
     for (let i = 0; i < network.weights.length; i++) {
       let z = tf.add(tf.matMul(network.weights[i], a), network.biases[i])
       a = actFn(z)
-      if (network.dropout > 0) {
+      if (network.dropout > 0 && i < network.weights.length - 1) {
         const keepProb = 1 - network.dropout
-        const mask = tf.randomUniform(a.shape, 0, 1).less(keepProb).cast('float32')
-        a = tf.mul(a, mask)
+        if (keepProb <= 0) {
+          a = tf.zerosLike(a)
+        } else {
+          const mask = tf.randomUniform(a.shape, 0, 1).less(keepProb).cast('float32')
+          a = tf.mul(a, mask).div(keepProb)
+        }
       }
       activationsTensors.push(a)
     }
