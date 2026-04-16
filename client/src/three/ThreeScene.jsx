@@ -2,56 +2,11 @@ import React, { useRef, useEffect } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import NeuralScene from './NeuralScene.js'
-import useGesture from '../gesture/useGesture.js'
-import { getSharedCameraStream } from '../utils/cameraManager.js'
 import { appStore } from '../state/store.js'
 
-// ThreeScene: create renderer & NeuralScene once, then on each frame call neuralScene.update with the latest gesture from latestRef.
+// ThreeScene: create renderer & NeuralScene once, then update the scene each frame.
 export default function ThreeScene() {
   const mountRef = useRef(null)
-  const videoRef = useRef(document.createElement('video')) // offscreen for gesture detection
-  videoRef.current.setAttribute('playsinline', true)
-  videoRef.current.muted = true
-  videoRef.current.autoplay = true
-
-  // gesture hook (provides live values, used to update latestRef)
-  const { landmarks, gesture, confidence } = useGesture(videoRef)
-
-  // store latest gesture in a ref so the animation loop can read it without re-creating the whole scene
-  const latestRef = useRef({ landmarks: null, gesture: null, confidence: 0 })
-  useEffect(() => {
-    latestRef.current = { landmarks, gesture, confidence }
-    appStore.setState({
-      gesture: {
-        name: gesture,
-        confidence
-      }
-    })
-  }, [landmarks, gesture, confidence])
-
-  // attach shared stream to the offscreen video (and expose for debugging)
-  useEffect(() => {
-    let mounted = true
-    async function attachStream() {
-      try {
-        const stream = await getSharedCameraStream()
-        if (!mounted) return
-        if (videoRef.current.srcObject !== stream) {
-          videoRef.current.srcObject = stream
-          try { await videoRef.current.play() } catch (e) { /* autoplay may be restricted */ }
-        }
-        if (typeof window !== 'undefined') {
-          window.__gestureVideo = videoRef.current
-          window.__sharedStream = !!(videoRef.current && videoRef.current.srcObject)
-        }
-      } catch (err) {
-        console.warn('Offscreen camera start failed', err)
-        if (typeof window !== 'undefined') window.__sharedStream = false
-      }
-    }
-    attachStream()
-    return () => { mounted = false }
-  }, [])
 
   // create the renderer and neuralScene once
   useEffect(() => {
@@ -146,9 +101,8 @@ export default function ThreeScene() {
       const dt = (t - lastT) / 1000
       lastT = t
       controls.update()
-      // pass the latest gesture state snapshot into neuralScene.update
       try {
-        neuralScene.update(dt, latestRef.current)
+        neuralScene.update(dt, {})
       } catch (err) {
         console.warn('neuralScene.update error', err)
       }

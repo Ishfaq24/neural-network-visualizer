@@ -1,5 +1,4 @@
 import React from 'react'
-import CameraFeed from './components/CameraFeed'
 import ThreeScene from './three/ThreeScene'
 import UIControlPanel from './components/UIControlPanel'
 import DebugOverlay from './components/DebugOverlay'
@@ -17,19 +16,18 @@ export default function App() {
 
       <aside className="control-pane">
         <header className="pane-header">
-          <p className="eyebrow">Realtime Gesture + NN Sandbox</p>
-          <h1>Air Neural Network Visualizer</h1>
+          <p className="eyebrow">Neural Network Visualizer</p>
+          <h1>Simple Neural Network Visualizer</h1>
           <p>
-            Sketch layers in 3D space, link neurons with hand gestures, then run forward propagation to watch activations.
+            Build layers, connect them automatically, and run forward propagation to inspect activations.
           </p>
         </header>
 
-        <CameraFeed />
         <UIControlPanel />
         <DebugOverlay />
 
         <div className="pane-footer">
-          Built with MediaPipe Hands, Three.js, TensorFlow.js
+          Built with Three.js and TensorFlow.js
         </div>
       </aside>
     </div>

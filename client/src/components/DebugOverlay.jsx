@@ -22,11 +22,7 @@ export default function DebugOverlay() {
     }
   }, [hasWindow, tick]);
 
-  const latestGesture = hasWindow ? window.__latestGesture || null : null;
   const neuralScene = hasWindow ? window.__neuralScene || null : null;
-  const sharedStream =
-    (hasWindow && window.__sharedStream) ||
-    (hasWindow && window.__gestureVideo && window.__gestureVideo.srcObject ? true : false);
 
   return (
     <div
@@ -44,25 +40,6 @@ export default function DebugOverlay() {
     >
       <div style={{ fontWeight: 700, marginBottom: 6 }}>DEBUG OVERLAY</div>
 
-      <div>
-        <b>Gesture</b>: {latestGesture ? latestGesture.gesture : "—"} (
-        {latestGesture ? latestGesture.confidence : "—"})
-      </div>
-      <div style={{ wordBreak: "break-word" }}>
-        <b>Landmarks</b>:{" "}
-        {latestGesture && latestGesture.landmarks
-          ? `OK (${latestGesture.landmarks.length})`
-          : "none"}
-      </div>
-
-      <div style={{ marginTop: 6 }}>
-        <b>Camera Stream</b>: {sharedStream ? "attached" : "not attached"}
-      </div>
-      <div>
-        <b>Video readyState</b>:{" "}
-        {window.__gestureVideo ? window.__gestureVideo.readyState : "no video"}
-      </div>
-
       <div style={{ marginTop: 6 }}>
         <b>NeuralScene</b>: {neuralScene ? "present" : "not present"}
       </div>
@@ -73,13 +50,12 @@ export default function DebugOverlay() {
       </div>
 
       <div style={{ marginTop: 6 }}>
-        <b>tf.memory()</b>:{" "}
+        <b>tf.memory()</b>: {" "}
         {tfMemory ? JSON.stringify(tfMemory) : "tf not available"}
       </div>
 
       <div style={{ marginTop: 6, fontSize: 11, color: "#ddd" }}>
-        Open console and inspect window.__latestGesture / window.__neuralScene
-        for more details.
+        Open console and inspect window.__neuralScene for more details.
       </div>
     </div>
   );

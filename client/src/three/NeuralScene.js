@@ -21,10 +21,10 @@ export default class NeuralScene {
     this.layers = [] // [{id, nodeIds, x}]
     this.connections = [] // [{aId,bId,line,key}]
     this.selected = null
+    this.linkSourceId = null
     this.hover = null
     this.lastPointer = new THREE.Vector2()
     this.pinchActive = false
-    this.holdConnectionKey = null
     this.lastDeleteAt = 0
 
     this.signalQueue = [] // animations for forward pass
@@ -155,9 +155,9 @@ export default class NeuralScene {
 
   clear() {
     this.selected = null
+    this.linkSourceId = null
     this.hover = null
     this.pinchActive = false
-    this.holdConnectionKey = null
     this.nodes.forEach((n) => {
       n.mesh.geometry.dispose()
       this.scene.remove(n.mesh)
@@ -195,9 +195,9 @@ export default class NeuralScene {
   }
 
   // update called every frame
-  update(dt, gestureState) {
+  update(dt, gestureState = {}) {
     // dt seconds, gestureState: {landmarks, gesture, confidence}
-    const { landmarks, gesture } = gestureState
+    const { landmarks = null, gesture = null } = gestureState
     // highlight selected/hover based on latest gestures
     if (landmarks && landmarks[8]) {
       // index fingertip normalized coords
@@ -218,28 +218,30 @@ export default class NeuralScene {
         this._refreshNodeVisuals()
       }
 
-      // pinch start: select hovered node or create one; pinch hold: drag selected
+      // pinch: arm a connection source or create/select a neuron
       if (gesture === 'pinch') {
         if (!this.pinchActive) {
           this.pinchActive = true
           if (this.hover) {
-            this.selected = this.hover
+            if (this.linkSourceId && this.linkSourceId !== this.hover) {
+              this.createConnection(this.linkSourceId, this.hover)
+              this.selected = this.hover
+              this.linkSourceId = null
+            } else {
+              this.selected = this.hover
+              this.linkSourceId = this.hover
+            }
           } else {
             const newId = this.createNeuron({ x: world.x, y: world.y, z: world.z })
             const nodeEntry = this.nodes.get(newId)
             nodeEntry.mesh.scale.set(0.2, 0.2, 0.2)
             new TweenScale(nodeEntry.mesh, 1.0, 180).start()
             this.selected = newId
+            this.linkSourceId = newId
           }
           this._refreshNodeVisuals()
-        } else if (this.selected) {
-          const node = this.nodes.get(this.selected)
-          if (node) {
-            node.mesh.position.lerp(world, 0.23)
-            this._updateConnectionsGeometryFor(node.id)
-          }
         }
-      } else if (gesture === 'drag') {
+      } else if (gesture === 'grab') {
         this.pinchActive = false
         if (this.selected && this.nodes.get(this.selected)) {
           const world = this.screenToWorldPoint(landmarks[8], 0.5)
@@ -248,16 +250,14 @@ export default class NeuralScene {
           this._updateConnectionsGeometryFor(node.id)
         }
       } else if (gesture === 'hold') {
-        if (this.selected && this.hover && this.hover !== this.selected) {
-          const key = this._edgeKey(this.selected, this.hover)
-          if (this.holdConnectionKey !== key) {
-            this.createConnection(this.selected, this.hover)
-            this.holdConnectionKey = key
-          }
+        if (this.linkSourceId && this.hover && this.hover !== this.linkSourceId) {
+          this.createConnection(this.linkSourceId, this.hover)
+          this.selected = this.hover
+          this.linkSourceId = null
+          this._refreshNodeVisuals()
         }
       } else if (gesture === 'swipe') {
         this.pinchActive = false
-        this.holdConnectionKey = null
         const now = performance.now()
         if (this.hover && now - this.lastDeleteAt > 420) {
           this.removeNode(this.hover)
@@ -265,13 +265,12 @@ export default class NeuralScene {
         }
       } else if (gesture === 'openPalm') {
         this.pinchActive = false
-        this.holdConnectionKey = null
         this.selected = null
+        this.linkSourceId = null
         this.camera.position.set(0,2,6)
         this._refreshNodeVisuals()
       } else {
         this.pinchActive = false
-        this.holdConnectionKey = null
       }
     } else {
       this.pinchActive = false

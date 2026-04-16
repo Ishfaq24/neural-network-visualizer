@@ -8,7 +8,6 @@ export default function UIControlPanel() {
   const scene = useAppStore((s) => s.scene)
   const run = useAppStore((s) => s.run)
   const ui = useAppStore((s) => s.ui)
-  const gesture = useAppStore((s) => s.gesture)
 
   async function handleAddLayer() {
     const actions = appStore.getSceneActions()
@@ -43,11 +42,8 @@ export default function UIControlPanel() {
       <div className="panel-title-row">
         <div>
           <h2 className="panel-title">Network Console</h2>
-          <p className="panel-subtitle">Build in air, then simulate forward propagation.</p>
+          <p className="panel-subtitle">Build layers, connect them, and inspect activations.</p>
         </div>
-        <span className="gesture-pill">
-          Gesture: {gesture.name || 'idle'}
-        </span>
       </div>
 
       <div className="metrics-grid">
@@ -65,40 +61,58 @@ export default function UIControlPanel() {
         </div>
       </div>
 
-      <div>
-        <label className="block text-sm text-slate-200">Activation</label>
-        <select value={activation} onChange={e => setActivation(e.target.value)} className="w-full mt-1 p-2.5 panel-input">
+      <div className="panel-section">
+        <div className="section-label">Architecture</div>
+        <div className="input-stack">
+          <label className="field-label">New Layer Size</label>
+          <input
+            type="number"
+            min="1"
+            max="12"
+            value={newLayerSize}
+            onChange={(e) => setNewLayerSize(Number(e.target.value))}
+            className="w-full panel-input"
+          />
+        </div>
+
+        <div className="button-grid">
+          <button onClick={handleAddLayer} className="panel-btn panel-btn-secondary">Add Layer</button>
+          <button onClick={handleConnectFeedForward} className="panel-btn panel-btn-secondary">Auto Connect</button>
+          <button onClick={handleClear} className="panel-btn panel-btn-danger">Clear Scene</button>
+        </div>
+      </div>
+
+      <div className="panel-section">
+        <div className="section-label">Forward Pass</div>
+
+        <div className="input-stack">
+          <label className="field-label">Activation</label>
+          <select value={activation} onChange={e => setActivation(e.target.value)} className="w-full panel-input">
           <option value="relu">ReLU</option>
           <option value="sigmoid">Sigmoid</option>
           <option value="tanh">Tanh</option>
-        </select>
-      </div>
+          </select>
+        </div>
 
-      <div>
-        <label className="block text-sm text-slate-200">Dropout (%)</label>
-        <input type="range" min="0" max="80" value={dropout} onChange={e => setDropout(Number(e.target.value))} />
-        <div className="text-xs text-slate-400">Current: {dropout}% (used for forward simulation)</div>
-      </div>
+        <div className="input-stack">
+          <div className="field-row">
+            <label className="field-label">Dropout</label>
+            <span className="field-value">{dropout}%</span>
+          </div>
+          <input
+            className="panel-range"
+            type="range"
+            min="0"
+            max="80"
+            value={dropout}
+            onChange={e => setDropout(Number(e.target.value))}
+          />
+          <div className="field-hint">Applies inverted dropout during forward passes.</div>
+        </div>
 
-      <div>
-        <label className="block text-sm text-slate-200">New Layer Size</label>
-        <input
-          type="number"
-          min="1"
-          max="12"
-          value={newLayerSize}
-          onChange={(e) => setNewLayerSize(Number(e.target.value))}
-          className="w-full mt-1 p-2.5 panel-input"
-        />
-      </div>
-
-      <div className="grid grid-cols-2 gap-2 mt-2">
-        <button onClick={handleAddLayer} className="panel-btn panel-btn-secondary">Add Layer</button>
-        <button onClick={handleConnectFeedForward} className="panel-btn panel-btn-secondary">Auto Connect</button>
-        <button onClick={handleRunForward} className="panel-btn panel-btn-primary" disabled={ui.status === 'running'}>
+        <button onClick={handleRunForward} className="panel-btn panel-btn-primary panel-btn-full" disabled={ui.status === 'running'}>
           {ui.status === 'running' ? 'Running…' : 'Run Forward'}
         </button>
-        <button onClick={handleClear} className="panel-btn panel-btn-danger">Clear Scene</button>
       </div>
 
       {run.lastActivations && (
@@ -112,8 +126,7 @@ export default function UIControlPanel() {
       {run.error && <div className="text-rose-400 text-xs">Forward error: {run.error}</div>}
 
       <div className="text-xs text-slate-400 leading-relaxed">
-        Controls: pinch in empty space creates a neuron, pinch on a neuron moves it, hold over another neuron creates a directed edge, swipe deletes hovered neuron.
-        Confidence: {Math.round((gesture.confidence || 0) * 100)}%
+        Use the buttons to add layers, auto-connect them, and run a forward pass. Orbit the scene with the mouse to inspect the network.
       </div>
     </div>
   )
