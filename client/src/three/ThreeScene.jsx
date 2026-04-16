@@ -23,7 +23,7 @@ export default function ThreeScene() {
 
     // Scene / Camera
     const scene = new THREE.Scene()
-    scene.background = new THREE.Color(0x061025)
+    scene.background = new THREE.Color(0xf8fafc)
     const camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000)
     camera.position.set(0, 2, 6)
 
@@ -35,9 +35,12 @@ export default function ThreeScene() {
     const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6)
     hemi.position.set(0, 1, 0)
     scene.add(hemi)
-    const dir = new THREE.DirectionalLight(0xffffff, 0.6)
-    dir.position.set(5, 10, 7)
+    const dir = new THREE.DirectionalLight(0xffffff, 0.9)
+    dir.position.set(4, 8, 6)
     scene.add(dir)
+    const fill = new THREE.DirectionalLight(0xdbeafe, 0.45)
+    fill.position.set(-4, 3, 5)
+    scene.add(fill)
 
     // Neural scene manager (one instance)
     const neuralScene = new NeuralScene(scene, camera, renderer.domElement)
@@ -54,6 +57,10 @@ export default function ThreeScene() {
     }
 
     appStore.registerSceneActions({
+      applyPreset: (preset) => {
+        neuralScene.applyPreset(preset)
+        publishStats()
+      },
       addLayer: (size) => {
         neuralScene.createLayerByCount(size)
         publishStats()
@@ -66,6 +73,38 @@ export default function ThreeScene() {
         neuralScene.clear()
         publishStats()
       },
+      trainBackprop: async ({ activation, dropout, learningRate, target, steps = 1 }) => {
+        appStore.setState({ ui: { status: 'training' }, run: { error: null } })
+        try {
+          let result = null
+          for (let step = 0; step < steps; step++) {
+            result = await neuralScene.trainBackprop(null, target, {
+              activation,
+              dropout,
+              learningRate
+            })
+          }
+          appStore.setState({
+            run: {
+              lastInput: result.input,
+              lastTarget: result.target,
+              lastActivations: result.activations,
+              lastLoss: result.loss,
+              error: null
+            },
+            ui: { status: 'idle' }
+          })
+          return result
+        } catch (err) {
+          appStore.setState({
+            run: {
+              error: err?.message || String(err)
+            },
+            ui: { status: 'idle' }
+          })
+          throw err
+        }
+      },
       runForward: async ({ activation, dropout }) => {
         appStore.setState({ ui: { status: 'running' }, run: { error: null } })
         try {
@@ -77,6 +116,7 @@ export default function ThreeScene() {
             run: {
               lastInput: result.input,
               lastActivations: result.activations,
+              lastLoss: null,
               error: null
             },
             ui: { status: 'idle' }

@@ -13,6 +13,8 @@ const initialState = {
 	run: {
 		lastInput: null,
 		lastActivations: null,
+		lastTarget: null,
+		lastLoss: null,
 		error: null
 	},
 	ui: {
